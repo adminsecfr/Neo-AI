@@ -121,11 +121,12 @@ class NeoAI:
 
         messages = []
 
-        # LM Studio models often expect only 'user' and 'assistant' roles.
-        # Convert any 'system' messages to 'user' to avoid template errors.
+        # LM Studio models typically only understand 'user' and 'assistant'
+        # message roles. Map all other roles (e.g. 'system', 'tool') to 'user'
+        # before sending the history to avoid template errors.
         for msg in self.history:
             role = msg.get("role", "user")
-            if role == "system":
+            if role not in ("user", "assistant"):
                 role = "user"
             messages.append({"role": role, "content": msg.get("content", "")})
 
