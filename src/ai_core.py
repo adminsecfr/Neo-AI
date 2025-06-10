@@ -119,7 +119,16 @@ class NeoAI:
     def _query_lm_studio(self, prompt, clear_thinking=False):
         instruction = f"{self.lm_studio_config.get('input_prefix', '### Instruction:')} {prompt} {self.lm_studio_config.get('input_suffix', '### Response:')}"
 
-        messages = self.history.copy()
+        messages = []
+
+        # LM Studio models often expect only 'user' and 'assistant' roles.
+        # Convert any 'system' messages to 'user' to avoid template errors.
+        for msg in self.history:
+            role = msg.get("role", "user")
+            if role == "system":
+                role = "user"
+            messages.append({"role": role, "content": msg.get("content", "")})
+
         messages.append({"role": "user", "content": instruction})
 
         try:
