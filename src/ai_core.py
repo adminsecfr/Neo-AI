@@ -13,49 +13,56 @@ from src.command_executor import wait_for_command_completion
 from src.approval_handler import ApprovalHandler
 
 # Clear all proxy environment variables
-os.environ.pop('http_proxy', None)
-os.environ.pop('https_proxy', None)
-os.environ.pop('HTTP_PROXY', None)
-os.environ.pop('HTTPS_PROXY', None)
-os.environ.pop('all_proxy', None)
-os.environ.pop('ALL_PROXY', None)
-os.environ.pop('socks_proxy', None)
-os.environ.pop('SOCKS_PROXY', None)
+os.environ.pop("http_proxy", None)
+os.environ.pop("https_proxy", None)
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("all_proxy", None)
+os.environ.pop("ALL_PROXY", None)
+os.environ.pop("socks_proxy", None)
+os.environ.pop("SOCKS_PROXY", None)
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 class NeoAI:
     def __init__(self, config):
-        self.mode = config.get('mode', 'lm_studio')
+        self.mode = config.get("mode", "lm_studio")
         logging.info(f"Initializing NeoAI in {self.mode} mode.")
-        self.require_approval = config.get('command_approval', {}).get('require_approval', True)
-        self.auto_approve_all = config.get('command_approval', {}).get('auto_approve_all', False)
-        self.is_streaming_mode = config.get('stream', True)
+        self.require_approval = config.get("command_approval", {}).get(
+            "require_approval", True
+        )
+        self.auto_approve_all = config.get("command_approval", {}).get(
+            "auto_approve_all", False
+        )
+        self.is_streaming_mode = config.get("stream", True)
         self.config = config
 
-        if self.mode == 'digital_ocean':
+        if self.mode == "digital_ocean":
+            do_cfg = config.get("digital_ocean_config", {})
             self.token_manager = TokenManager(
-                agent_id=config['digital_ocean_config']['agent_id'],
-                agent_key=config['digital_ocean_config']['agent_key'],
-                auth_api_url="https://cluster-api.do-ai.run/v1"
+                agent_id=do_cfg.get("agent_id"),
+                agent_key=do_cfg.get("agent_key"),
+                auth_api_url="https://cluster-api.do-ai.run/v1",
             )
             self.access_token = self.token_manager.get_valid_access_token()
             self.token_timestamp = time.time()
-            self.agent_endpoint = config['digital_ocean_config']['agent_endpoint']
-            self.model = config['digital_ocean_config']['model']
+            self.agent_endpoint = do_cfg.get("agent_endpoint")
+            self.model = do_cfg.get("model")
         else:
-            openai.api_base = config['api_url']
-            openai.api_key = config['api_key']
-            self.model = config['model']
+            openai.api_base = config.get("api_url")
+            openai.api_key = config.get("api_key")
+            self.model = config.get("model")
 
-        self.lm_studio_config = config.get('lm_studio_config', {})
+        self.lm_studio_config = config.get("lm_studio_config", {})
         self.history = []
         self.context_initialized = False
 
     def _ensure_valid_token(self):
         """Check that the token is still valid and renew it if necessary"""
-        if self.mode != 'digital_ocean':
+        if self.mode != "digital_ocean":
             return
 
         # Check token every 15 minutes or in case of 401 error
@@ -70,19 +77,17 @@ class NeoAI:
             except Exception as e:
                 logging.error(f"Error refreshing token: {e}")
                 # Attempt to completely reset token management
+                do_cfg = self.config.get("digital_ocean_config", {})
                 self.token_manager = TokenManager(
-                    agent_id=self.config['digital_ocean_config']['agent_id'],
-                    agent_key=self.config['digital_ocean_config']['agent_key'],
-                    auth_api_url="https://cluster-api.do-ai.run/v1"
+                    agent_id=do_cfg.get("agent_id"),
+                    agent_key=do_cfg.get("agent_key"),
+                    auth_api_url="https://cluster-api.do-ai.run/v1",
                 )
                 self.access_token = self.token_manager.get_valid_access_token()
                 self.token_timestamp = current_time
 
     def initialize_context(self):
-        context_commands = [
-            "pwd",
-            "ls"
-        ]
+        context_commands = ["pwd", "ls"]
         context_data = load_persistent_memory()
         initial_context = "<context>\n"
 
@@ -112,16 +117,16 @@ class NeoAI:
             is_first_chunk = True
 
             for chunk in completion:
-                if 'choices' in chunk and len(chunk['choices']) > 0:
-                    content = chunk['choices'][0]['delta'].get('content', '')
+                if "choices" in chunk and len(chunk["choices"]) > 0:
+                    content = chunk["choices"][0]["delta"].get("content", "")
                     if content:
                         if is_first_chunk:
                             if clear_thinking:
-                                print('\r' + ' ' * 30 + '\r', end="", flush=True)
-                            print("\033[1;34mNeo:\033[0m ", end='', flush=True)
+                                print("\r" + " " * 30 + "\r", end="", flush=True)
+                            print("\033[1;34mNeo:\033[0m ", end="", flush=True)
                             is_first_chunk = False
 
-                        print(content, end='', flush=True)
+                        print(content, end="", flush=True)
                         full_response += content
 
             print()
@@ -150,11 +155,11 @@ class NeoAI:
         while retry_count < max_retries:
             try:
                 with httpx.stream(
-                        "POST",
-                        f"{self.agent_endpoint}/chat/completions",
-                        json=payload,
-                        headers=headers,
-                        timeout=30.0
+                    "POST",
+                    f"{self.agent_endpoint}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0,
                 ) as response:
                     response.raise_for_status()
 
@@ -164,18 +169,30 @@ class NeoAI:
                     for line in response.iter_lines():
                         line = line.strip()
                         if line.startswith("data:"):
-                            line = line[len("data:"):].strip()
+                            line = line[len("data:") :].strip()
 
                         if line:
                             try:
                                 chunk = json.loads(line)
                                 if "choices" in chunk and chunk["choices"]:
-                                    content = chunk["choices"][0].get("delta", {}).get("content", "")
+                                    content = (
+                                        chunk["choices"][0]
+                                        .get("delta", {})
+                                        .get("content", "")
+                                    )
                                     if content:
                                         if is_first_chunk:
                                             if clear_thinking:
-                                                print('\r' + ' ' * 30 + '\r', end="", flush=True)
-                                            print("\033[1;34mNeo:\033[0m ", end="", flush=True)
+                                                print(
+                                                    "\r" + " " * 30 + "\r",
+                                                    end="",
+                                                    flush=True,
+                                                )
+                                            print(
+                                                "\033[1;34mNeo:\033[0m ",
+                                                end="",
+                                                flush=True,
+                                            )
                                             is_first_chunk = False
                                         print(content, end="", flush=True)
                                         assistant_response += content
@@ -186,7 +203,9 @@ class NeoAI:
                     print()
 
                     if assistant_response.strip():
-                        self.history.append({"role": "assistant", "content": assistant_response.strip()})
+                        self.history.append(
+                            {"role": "assistant", "content": assistant_response.strip()}
+                        )
                         return self._process_response(assistant_response.strip())
                     return ""
 
@@ -194,10 +213,11 @@ class NeoAI:
                 if e.response.status_code == 401 and retry_count < max_retries:
                     retry_count += 1
                     # Force token refresh
+                    do_cfg = self.config.get("digital_ocean_config", {})
                     self.token_manager = TokenManager(
-                        agent_id=self.config['digital_ocean_config']['agent_id'],
-                        agent_key=self.config['digital_ocean_config']['agent_key'],
-                        auth_api_url="https://cluster-api.do-ai.run/v1"
+                        agent_id=do_cfg.get("agent_id"),
+                        agent_key=do_cfg.get("agent_key"),
+                        auth_api_url="https://cluster-api.do-ai.run/v1",
                     )
                     self.access_token = self.token_manager.get_valid_access_token()
                     self.token_timestamp = time.time()
@@ -222,6 +242,7 @@ class NeoAI:
 
             except Exception as e:
                 import traceback
+
                 print(f"\nDetailed error: {e}")
                 print(traceback.format_exc())
                 break
@@ -236,7 +257,7 @@ class NeoAI:
 
             self.history.append({"role": "user", "content": prompt})
 
-            if self.mode == 'digital_ocean':
+            if self.mode == "digital_ocean":
                 return self._query_digitalocean(prompt, clear_thinking)
             else:
                 response = self._query_lm_studio(prompt, clear_thinking)
@@ -245,6 +266,7 @@ class NeoAI:
                 return response
         except Exception as e:
             import traceback
+
             print(f"Details: {e}")
             print(traceback.format_exc())
 
@@ -264,11 +286,11 @@ class NeoAI:
             mcp_results = mcp.process_response(
                 response,
                 require_approval=self.require_approval,
-                auto_approve=self.auto_approve_all
+                auto_approve=self.auto_approve_all,
             )
 
             # Log the MCP results for debugging
-           # print(f"DEBUG - MCP results: {mcp_results}")
+            # print(f"DEBUG - MCP results: {mcp_results}")
 
             # Check if any protocols were executed
             follow_up_messages = []
@@ -297,10 +319,13 @@ class NeoAI:
                 elif self.mode == "lm_studio":
                     return self._query_lm_studio(combined_prompt)
                 else:
-                    return f"Unknown mode: {self.mode}. Unable to send follow-up prompt."
+                    return (
+                        f"Unknown mode: {self.mode}. Unable to send follow-up prompt."
+                    )
 
         except Exception as e:
             import traceback
+
             print(f"\nAn unexpected error occurred while processing the response: {e}")
             print(traceback.format_exc())
             return "An error occurred while processing the command."
