@@ -58,6 +58,23 @@ class NeoAI:
 
         self.lm_studio_config = config.get("lm_studio_config", {})
         self.history = []
+
+        # Inject pre-prompt instructions so the language model knows about the
+        # Machine Communication Protocol (MCP).  Without this, local models may
+        # respond like a regular chat bot and never issue command tags.
+        preprompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "config",
+            "PrePromt.md",
+        )
+        if os.path.exists(preprompt_path):
+            try:
+                with open(preprompt_path, "r") as f:
+                    preprompt_text = f.read()
+                self.history.append({"role": "system", "content": preprompt_text})
+            except Exception as e:
+                logging.error(f"Failed to load pre-prompt: {e}")
+
         self.context_initialized = False
 
     def _ensure_valid_token(self):
